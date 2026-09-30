@@ -1,0 +1,9 @@
+node_modules
+dist
+.env
+audio-cache
+.DS_Store
+.env
+.env*.local
+.DS_Store
+.vite/
