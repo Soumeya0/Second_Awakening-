@@ -1,0 +1,64 @@
+# docker compose up --build -> http://localhost:8080
+# Runs a local TimescaleDB by default. To use Tiger Cloud instead, set DATABASE_URL in a root .env
+# (keep ?sslmode=require); the db service still starts but goes unused.
+services:
+  db:
+    image: timescale/timescaledb:latest-pg17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: levelup
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d levelup"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build: ./backend
+    # API keys (Gemini, ElevenLabs, Auth0) come from backend/.env if it exists.
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      PORT: 4000
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@db:5432/levelup}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+      DEMO_MODE: ${DEMO_MODE:-true}
+      # Local testing only: requests act as the x-dev-user header. Set to false once Auth0 is configured.
+      AUTH_DISABLED: ${AUTH_DISABLED:-true}
+    volumes:
+      - audio-cache:/app/audio-cache
+    ports:
+      - "4000:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./Frontend
+      args:
+        VITE_API_ENABLED: ${VITE_API_ENABLED:-true}
+        VITE_DEV_USER: ${VITE_DEV_USER:-player1}
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  audio-cache:
